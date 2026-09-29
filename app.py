@@ -4,6 +4,7 @@ import os
 import subprocess
 import tempfile
 import time
+import urllib.request
 import torch
 
 from PIL import Image
@@ -48,20 +49,35 @@ if "history" not in st.session_state:
 if "success_time" not in st.session_state:
     st.session_state["success_time"] = None
 
+if "last_uploaded_file_id" not in st.session_state:
+    st.session_state["last_uploaded_file_id"] = None
+
 is_disabled = st.session_state["processing"]
 
-# 리눅스 클라우드 서버 환경 폰트 매핑 (한글 깨짐 네모 현상 방지)
-FONT_MAP_LINUX = {
-    "Malgun Gothic": "NanumGothic",
-    "NanumGothic": "NanumGothic",
-    "NanumMyeongjo": "NanumMyeongjo",
-    "NanumSquare": "NanumGothic",
-    "Pretendard": "NanumGothic",
-    "Gmarket Sans": "NanumGothic",
-    "Black Han Sans": "NanumGothic",
-    "Dotum": "NanumGothic",
-    "Batang": "NanumMyeongjo",
-}
+# 한글 폰트 보장 다운로드 로직 (서버 한글 깨짐 완전 방지)
+FONT_DIR = os.path.join(os.getcwd(), "fonts")
+FONT_PATH = os.path.join(FONT_DIR, "NanumGothic.ttf")
+
+
+def ensure_font_exists():
+    if not os.path.exists(FONT_DIR):
+        os.makedirs(FONT_DIR, exist_ok=True)
+    if not os.path.exists(FONT_PATH) or os.path.getsize(FONT_PATH) < 10000:
+        url = "https://cdn.jsdelivr.net/gh/google/fonts/ofl/nanumgothic/NanumGothic-Bold.ttf"
+        try:
+            req = urllib.request.Request(
+                url, headers={"User-Agent": "Mozilla/5.0"}
+            )
+            with (
+                urllib.request.urlopen(req) as response,
+                open(FONT_PATH, "wb") as out_file,
+            ):
+                out_file.write(response.read())
+        except Exception:
+            pass
+
+
+ensure_font_exists()
 
 
 # Hex 색상을 ASS 포맷 색상(&H00BBGGRR)으로 변환
@@ -127,11 +143,7 @@ def generate_ass_file(
     segments_data,
     video_aspect=9.0 / 16.0,
 ):
-    # OS 환경에 따른 폰트 이름 변환 (리눅스 서버 한글 깨짐 처리)
-    if os.name != "nt":
-        actual_font = FONT_MAP_LINUX.get(font_name, "NanumGothic")
-    else:
-        actual_font = font_name
+    actual_font = "NanumGothic"
 
     scale = 4.0
     s_font = font_size * scale
@@ -197,6 +209,20 @@ with col_left:
         type=["mp4", "mov", "m4v", "mkv"],
         disabled=is_disabled,
     )
+
+    # 새로운 영상이 업로드되거나 변경되면 이전 합성 완료 영상 제거
+    if uploaded_file is not None:
+        file_id = f"{uploaded_file.name}_{uploaded_file.size}"
+        if st.session_state["last_uploaded_file_id"] != file_id:
+            st.session_state["last_uploaded_file_id"] = file_id
+            st.session_state["final_video_bytes"] = None
+            st.session_state["success_time"] = None
+    else:
+        if st.session_state["last_uploaded_file_id"] is not None:
+            st.session_state["last_uploaded_file_id"] = None
+            st.session_state["final_video_bytes"] = None
+            st.session_state["success_time"] = None
+
     script_text = st.text_area(
         "대본을 입력하세요 (줄바꿈 기준으로 자막 단위가 나뉩니다)",
         height=140,
@@ -269,8 +295,8 @@ with col_left:
         font_option = st.selectbox(
             "글꼴 (Font)",
             [
-                "Malgun Gothic",
                 "NanumGothic",
+                "Malgun Gothic",
                 "NanumMyeongjo",
                 "NanumSquare",
                 "Pretendard",
@@ -478,7 +504,10 @@ if cancel_btn:
     st.session_state["processing"] = False
     st.rerun()
 
+# 새로 합성 시작 시 기존 완성 영상 비우기 및 상태 초기화
 if start_btn:
+    st.session_state["final_video_bytes"] = None
+    st.session_state["success_time"] = None
     st.session_state["processing"] = True
     st.rerun()
 
@@ -627,11 +656,9 @@ if st.session_state["processing"]:
                 "2/2단계: 선명한 글자 + 은은한 글로우 레이어 FFmpeg 합성 중..."
             ):
                 try:
-                    # OS 환경별 폰트 디렉토리 자동 지정
-                    if os.name == "nt":
-                        fonts_dir = "C\\:/Windows/Fonts"
-                    else:
-                        fonts_dir = "/usr/share/fonts/truetype/nanum"
+                    ensure_font_exists()
+                    fonts_dir_clean = os.path.abspath(FONT_DIR).replace("\\", "/")
+                    ass_filename_clean = ass_filename.replace("\\", "/")
 
                     ffmpeg_cmd = [
                         "ffmpeg",
@@ -639,7 +666,7 @@ if st.session_state["processing"]:
                         "-i",
                         video_filename,
                         "-vf",
-                        f"subtitles='{ass_filename}':fontsdir='{fonts_dir}'",
+                        f"subtitles={ass_filename_clean}:fontsdir='{fonts_dir_clean}'",
                         "-c:a",
                         "copy",
                         output_filename,
