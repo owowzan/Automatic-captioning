@@ -1,0 +1,4 @@
+streamlit
+git+https://github.com/m-bain/whisperX.git
+torch
+Pillow
