@@ -49,9 +49,6 @@ if "history" not in st.session_state:
 if "success_time" not in st.session_state:
     st.session_state["success_time"] = None
 
-if "last_uploaded_file_id" not in st.session_state:
-    st.session_state["last_uploaded_file_id"] = None
-
 is_disabled = st.session_state["processing"]
 
 # 한글 폰트 보장 다운로드 로직 (서버 한글 깨짐 완전 방지)
@@ -209,19 +206,6 @@ with col_left:
         type=["mp4", "mov", "m4v", "mkv"],
         disabled=is_disabled,
     )
-
-    # 새로운 영상이 업로드되거나 변경되면 이전 합성 완료 영상 제거
-    if uploaded_file is not None:
-        file_id = f"{uploaded_file.name}_{uploaded_file.size}"
-        if st.session_state["last_uploaded_file_id"] != file_id:
-            st.session_state["last_uploaded_file_id"] = file_id
-            st.session_state["final_video_bytes"] = None
-            st.session_state["success_time"] = None
-    else:
-        if st.session_state["last_uploaded_file_id"] is not None:
-            st.session_state["last_uploaded_file_id"] = None
-            st.session_state["final_video_bytes"] = None
-            st.session_state["success_time"] = None
 
     script_text = st.text_area(
         "대본을 입력하세요 (줄바꿈 기준으로 자막 단위가 나뉩니다)",
@@ -504,9 +488,8 @@ if cancel_btn:
     st.session_state["processing"] = False
     st.rerun()
 
-# 새로 합성 시작 시 기존 완성 영상 비우기 및 상태 초기화
+# 합성 시작 시 성공 알림 토스트만 비우고, 이전 영상 및 미리보기는 계속 유지
 if start_btn:
-    st.session_state["final_video_bytes"] = None
     st.session_state["success_time"] = None
     st.session_state["processing"] = True
     st.rerun()
