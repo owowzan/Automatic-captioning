@@ -1,0 +1,16 @@
+name: Keep Streamlit Alive
+
+on:
+  schedule:
+    # 6시간마다 실행 (UTC 기준)
+    - cron: '0 */6 * * *'
+  # GitHub 웹 인터페이스에서 수동으로 실행해볼 수 있는 버튼 생성
+  workflow_dispatch:
+
+jobs:
+  ping-app:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Ping to Streamlit App
+        run: |
+          curl -sS https://automatic-captioning-mb6u48wbgqnosdtbpt3re8.streamlit.app/?embed=true > /dev/null
