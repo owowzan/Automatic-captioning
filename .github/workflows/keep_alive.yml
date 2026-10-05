@@ -2,15 +2,53 @@ name: Keep Streamlit Alive
 
 on:
   schedule:
-    # 6시간마다 실행 (UTC 기준)
-    - cron: '0 */6 * * *'
-  # GitHub 웹 인터페이스에서 수동으로 실행해볼 수 있는 버튼 생성
+    # 매일 3시간마다 실행
+    - cron: '0 */3 * * *'
   workflow_dispatch:
 
 jobs:
-  ping-app:
+  keep-alive:
     runs-on: ubuntu-latest
     steps:
-      - name: Send Ping to Streamlit App
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install Playwright
         run: |
-          curl -sS https://automatic-captioning-mb6u48wbgqnosdtbpt3re8.streamlit.app/?embed=true > /dev/null
+          python -m pip install --upgrade pip
+          pip install playwright
+          playwright install chromium
+
+      - name: Run Headless Browser Ping
+        run: |
+          python -c "
+          from playwright.sync_api import sync_playwright
+          import time
+
+          url = 'https://automatic-captioning-mb6u48wbgqnosdtbpt3re8.streamlit.app/'
+          
+          with sync_playwright() as p:
+              browser = p.chromium.launch(headless=True)
+              page = browser.new_page()
+              print('Navigating to Streamlit App...')
+              page.goto(url, timeout=60000)
+              
+              # 만약 Sleep 버튼(Yes, get this app back up!)이 떠 있다면 자동으로 클릭
+              try:
+                  button = page.locator('button:has-text(\"Yes, get this app back up!\")')
+                  if button.is_visible(timeout=5000):
+                      print('Sleep mode detected. Clicking wake-up button...')
+                      button.click()
+                      time.sleep(10)
+              except Exception as e:
+                  print('Already awake or button not found:', e)
+
+              time.sleep(5)
+              print('Successfully pinged and loaded Streamlit session!')
+              browser.close()
+          "
